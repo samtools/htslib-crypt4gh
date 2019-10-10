@@ -1,0 +1,14 @@
+*.bundle
+*.cygdll
+*.dll
+*.o
+*.so
+*~
+autom4te.cache
+config.h
+config.h.in
+config.log
+config.status
+configure
+Makefile
+progs/crypt4gh-agent

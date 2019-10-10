@@ -1,0 +1,151 @@
+# Makefile for HTSlib plugins.
+#
+#    Copyright (C) 2016,2019 Genome Research Ltd.
+#
+#    Authors: John Marshall <jm18@sanger.ac.uk>
+#             Rob Davies <rmd@sanger.ac.uk>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+# This Makefile uses GNU Make-specific constructs, including conditionals
+# and target-specific variables.  You will need to use GNU Make.
+
+srcdir ?= .
+
+CC       = @CC@
+CPPFLAGS = @CPPFLAGS@
+CFLAGS   = @CFLAGS@
+LDFLAGS  = @LDFLAGS@
+LIBS     = @LIBS@
+
+prefix       = @prefix@
+exec_prefix  = @exec_prefix@
+bindir       = @bindir@
+libexecdir   = @libexecdir@
+plugindir    = @plugindir@
+datarootdir  = @datarootdir@
+mandir       = @mandir@
+
+INSTALL         = install -p
+INSTALL_DIR     = mkdir -p -m 755
+INSTALL_PROGRAM = $(INSTALL)
+
+.PHONY: all clean testclean distclean install plugins tags test
+all: plugins all-programs
+
+HTSDIR=@HTSDIR@
+
+# Version number for plugins is the Git description of the working tree,
+# or the date of compilation if built outwith a Git repository.
+VERSION := $(shell $(if $(wildcard $(srcdir)/.git),cd $(srcdir) && git describe --always --dirty,date +%Y%m%d))
+VERSION_CPPFLAGS = -DPLUGINS_VERSION=\"$(VERSION)\"
+
+ALL_CPPFLAGS = -Iinclude $(CPPFLAGS) $(VERSION_CPPFLAGS)
+ALL_CFLAGS   = $(CFLAGS)
+ALL_LDFLAGS  = $(LDFLAGS)
+ALL_LIBS     = $(LIBS) -lpthread
+
+%.o: %.c
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) -c -o $@ $<
+
+PLATFORM := $(shell uname -s)
+ifeq "$(PLATFORM)" "Darwin"
+PLUGIN_EXT = bundle
+
+%.bundle: %.o
+	$(CC) -bundle -Wl,-undefined,dynamic_lookup $(ALL_LDFLAGS) -o $@ $^ $(ALL_LIBS)
+
+else ifeq "$(findstring CYGWIN,$(PLATFORM))" "CYGWIN"
+PLUGIN_EXT = cygdll
+
+%.cygdll: %.o
+	$(CC) -shared $(ALL_LDFLAGS) -o $@ $^ libhts.dll.a $(ALL_LIBS)
+
+ifdef HTSDIR
+ALL_LDFLAGS += -L$(HTSDIR)
+endif
+
+else
+PLUGIN_EXT = so
+ALL_CFLAGS += -fpic
+
+%.so: %.o
+	$(CC) -shared -Wl,-E $(ALL_LDFLAGS) -o $@ $^ $(ALL_LIBS)
+endif
+
+ifdef HTSDIR
+ALL_CPPFLAGS += -I$(HTSDIR)
+endif
+
+# Override $(PLUGINS) to build or install a different subset of the available
+# plugins.
+PLUGINS = plugin/hfile_crypt4gh.$(PLUGIN_EXT)
+
+plugins: $(PLUGINS)
+
+BUILT_PROGRAMS = progs/crypt4gh-agent
+
+all-programs: $(BUILT_PROGRAMS)
+
+install: $(PLUGINS) $(BUILT_PROGRAMS)
+	$(INSTALL_DIR) $(DESTDIR)$(plugindir)
+	$(INSTALL_PROGRAM) $(PLUGINS) $(DESTDIR)$(plugindir)
+	$(INSTALL_PROGRAM) $(BUILT_PROGRAMS) $(DESTDIR)$(bindir)
+
+testclean:
+	-rm -f test/*.tmp.*
+
+clean: testclean
+	-rm -f plugin/*.o plugin/*.$(PLUGIN_EXT)
+	-rm -f progs/*.o
+	-rm -f $(BUILT_PROGRAMS)
+
+distclean: clean
+	-rm -f config.cache config.h config.log config.status
+	-rm -rf autom4te.cache
+	-rm -f Makefile
+
+tags TAGS:
+	ctags -f TAGS *.[ch]
+
+progs/crypt4gh-agent:
+	$(CC) $(LDFLAGS) -o $@ progs/crypt4gh_agent.o progs/keyfile.o $(ALL_LIBS)
+
+check test: $(BUILT_PROGRAMS) $(PLUGINS)
+	HTSDIR='$(HTSDIR)' ; \
+	export HTSDIR ; \
+	progs/crypt4gh-agent -k test/alice.sec -k test/alice.pub test/test.sh
+
+######## Dependencies ########
+
+#### Crypt4gh plug-in ####
+
+plugin/hfile_crypt4gh.$(PLUGIN_EXT): plugin/hfile_crypt4gh.o
+
+#### Programs ####
+
+progs/crypt4gh-agent: progs/crypt4gh_agent.o progs/keyfile.o
+
+#### Object files ####
+
+progs/crypt4gh_agent.o: progs/crypt4gh_agent.c include/crypt4gh_agent_defs.h include/sodium_if.h include/keyfile.h include/base64.h
+
+progs/kefile.o: progs/keyfile.c include/keyfile.h include/sodium_if.h
+
+plugin/hfile_crypt4gh.o: plugin/hfile_crypt4gh.c plugin/hfile_internal.h include/crypt4gh_agent_defs.h include/sodium_if.h include/keyfile.h include/base64.h
