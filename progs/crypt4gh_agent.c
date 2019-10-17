@@ -386,7 +386,6 @@ static int handle_connection(Agent_settings *settings, Client **clients) {
         if (errno == EINTR) return 0;
         return -1;
     }
-    fprintf(stderr, "Got connection on fd %d\n", new_fd);
     client = calloc(1, sizeof(Client));
     if (!client) {
         close(new_fd);

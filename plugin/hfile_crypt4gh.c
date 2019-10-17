@@ -947,22 +947,7 @@ static hFILE *init_for_read(hFILE *hfile, const char *mode) {
     return NULL;
 }
 
-
-static void disclaimer() {
-    static int disclaimed = 0;
-    if (disclaimed) return;
-    fprintf(stderr,
-            "WARNING:  hfile_crypt4gh is for EXPERIMENTAL use only.  The file "
-            "format is liable\n"
-            "to change.  Do not expect future versions to be able to read "
-            "anything written\n"
-            "by this one.   Files encrypted by this module should not "
-            "be assumed secure.\n");
-    disclaimed = 1;
-}
-
 static hFILE *hopen_crypt4gh_wrapper(hFILE *hfile, const char *mode) {
-    disclaimer();
     if (strchr(mode, 'r')) {
         return init_for_read(hfile, mode);
     } else {
@@ -1010,19 +995,17 @@ static int crypt4gh_is_remote(const char *fname) {
     return hisremote(fname); // FIXME: possible infinite recursion?
 }
 
-int PLUGIN_GLOBAL(hfile_plugin_init,_crypt4gh)(struct hFILE_plugin *self) {
+int hfile_plugin_init(struct hFILE_plugin *self) {
     static const struct hFILE_scheme_handler handler =
         { hopen_crypt4gh, crypt4gh_is_remote, "hfile_crypt4gh",
           2000 + 50, vhopen_crypt4gh };
 
-#ifdef ENABLE_PLUGINS
     // Embed version string for examination via strings(1) or what(1)
     static const char id[] = "@(#)hfile_crypt4gh plugin (htslib)\t" PLUGINS_VERSION;
     if (hts_verbose >= 9) {
         fprintf(stderr, "[M::hfile_crypt4gh.init] version %s\n",
                 strchr(id, '\t')+1);
     }
-#endif
 
     self->name = "hfile_crypt4gh";
     self->destroy = crypt4gh_exit;

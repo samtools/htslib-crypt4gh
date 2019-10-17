@@ -123,21 +123,8 @@ struct hFILE_plugin {
     void (*destroy)(void);
 };
 
-#ifdef ENABLE_PLUGINS
-#define PLUGIN_GLOBAL(identifier,suffix) identifier
-
 /* Plugins must define an entry point with this signature.  */
 extern int hfile_plugin_init(struct hFILE_plugin *self);
-
-#else
-#define PLUGIN_GLOBAL(identifier,suffix) identifier##suffix
-
-/* Only plugins distributed within the HTSlib source that might be built
-   even with --disable-plugins need to use PLUGIN_GLOBAL and be listed here;
-   others can simply define hfile_plugin_init().  */
-
-extern int hfile_plugin_init_crypt4gh(struct hFILE_plugin *self);
-#endif
 
 #ifdef __cplusplus
 }
