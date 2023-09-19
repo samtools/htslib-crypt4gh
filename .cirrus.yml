@@ -1,0 +1,70 @@
+# cirrus-ci task definition for the htslib-crypt4gh plugin
+
+timeout_in: 10m
+
+#--------------------------------------------------
+# Template: htslib clone & build
+#
+# We try to clone htslib using the same branch name and owner as this
+# htslib-crypt4gh branch.  If it exists, it's likely the user is making a
+# joint PR and wants both checked in unison.
+# Failing that we use samtools/htslib:develop.
+# Note this only works on the users own forks.  Once in the samtools
+# organisation the branch name becomes pull/<num>.
+
+# Logic for choosing which to use is in the .ci_helpers/clone script.
+# Note we could also use "clone_script" if we want to replace the samtools
+# clone with our own commands too.
+clone_template: &HTSLIB_CLONE
+  htslib_clone_script: |
+    printenv CIRRUS_CHANGE_TITLE
+    .ci_helpers/clone "https://github.com/${CIRRUS_REPO_OWNER}/htslib" "${HTSDIR}" "${CIRRUS_BRANCH}" `printenv CIRRUS_CHANGE_TITLE | sed -n 's/.*htslib#\([0-9]*\).*/\1/p'`
+
+# Build a cut down HTSlib.  We need plugins, but can disable some parts we're
+# not testing
+htslib_compile_template: &HTSLIB_COMPILE
+  << : *HTSLIB_CLONE
+  htslib_compile_script: |
+    cd $HTSDIR
+    autoreconf -i
+    ./configure --disable-bz2 --disable-lzma --disable-libcurl --enable-plugins || (cat config.log; /bin/false)
+    make -j3
+
+#--------------------------------------------------
+# Template: plugin compile and test
+
+compile_template: &COMPILE
+  << : *HTSLIB_COMPILE
+
+  compile_script: |
+    autoreconf -i
+    ./configure --with-htslib="$HTSDIR" || \
+        (cat config.log; /bin/false)
+    make -j3
+
+test_template: &TEST
+  test_script: |
+    make test
+
+#--------------------------------------------------
+# Task: linux builds.
+
+# Debian + latest GCC
+gcc_task:
+  name: debian-gcc
+  container:
+    image: gcc:latest
+    cpu: 2
+    memory: 1G
+
+  environment:
+    LC_ALL: C
+    CIRRUS_CLONE_DEPTH: 1
+    HTSDIR: ./hidden-htslib
+
+  install_script: |
+    apt update
+    apt install -y --no-install-suggests --no-install-recommends libsodium-dev
+
+  << : *COMPILE
+  << : *TEST
