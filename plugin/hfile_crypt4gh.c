@@ -752,7 +752,16 @@ static off_t crypt4gh_seek(hFILE *fpv, off_t offset, int whence) {
         // the underlying file is in order to work out the absolute offset
         off_t end = hseek(fp->parent, 0, SEEK_END);
         off_t unencrypted_end;
-        if (end < 0) return end;
+        if (end < 0) {
+            // Clear error indicator on the parent if seek was on a pipe
+            // otherwise it causes a failure to be incorrectly reported
+            // on close.
+            if (errno == ESPIPE) hclearerr(fp->parent);
+#ifdef _WIN32
+            if (errno == EINVAL) hclearerr(fp->parent);
+#endif
+            return end;
+        }
         if (offset > 0) offset = 0;
         unencrypted_end = get_unencrypted_pos(fp, end, 1);
         offset = unencrypted_end > -offset ? unencrypted_end + offset : -1;
